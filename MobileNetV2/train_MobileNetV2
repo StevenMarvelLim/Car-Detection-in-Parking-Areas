@@ -1,0 +1,70 @@
+import tensorflow as tf
+from keras._tf_keras.keras.layers import GlobalAveragePooling2D, Dense
+from keras._tf_keras.keras.models import Model
+from keras._tf_keras.keras.optimizers import Adam
+from keras._tf_keras.keras.preprocessing.image import ImageDataGenerator
+import os
+
+# Define paths and parameters
+base_dir = './Dataset'
+weights_path = './Project Car Detection MobileNetV2/MbNetV2.weights.h5'
+
+# Constants for model
+NUM_CLASSES = 2
+IMG_WIDTH, IMG_HEIGHT = 32, 32
+BATCH_SIZE = 32
+EPOCHS = 10
+
+# Define MobileNetV2 base model
+MbNetV2_base = tf.keras.applications.MobileNetV2(input_shape=(IMG_WIDTH, IMG_HEIGHT, 3),
+                                                 include_top=False,
+                                                 weights='imagenet')  # Using ImageNet weights
+
+# Add custom classification layers on top of MobileNetV2
+x = MbNetV2_base.output
+x = GlobalAveragePooling2D()(x)
+predictions = Dense(NUM_CLASSES, activation='softmax')(x)
+MbNetV2 = Model(inputs=MbNetV2_base.input, outputs=predictions)
+
+# Freeze MobileNetV2 base layers (optional)
+for layer in MbNetV2_base.layers:
+    layer.trainable = False
+
+# Compile the model
+MbNetV2.compile(optimizer=Adam(learning_rate=0.001),
+                loss='categorical_crossentropy',
+                metrics=['accuracy'])
+
+# Data augmentation and preprocessing
+datagen = ImageDataGenerator(
+    rescale=1. / 255,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    validation_split=0.2)  # 20% validation split
+
+# Prepare data generators
+train_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=(IMG_WIDTH, IMG_HEIGHT),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='training')  # Use subset 'training' for training data
+
+validation_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=(IMG_WIDTH, IMG_HEIGHT),
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='validation')  # Use subset 'validation' for validation data
+
+# Train the model
+history = MbNetV2.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // BATCH_SIZE,
+    epochs=EPOCHS,
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // BATCH_SIZE)
+
+# Save the trained weights
+MbNetV2.save_weights(weights_path)
